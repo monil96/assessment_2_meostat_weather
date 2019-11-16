@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="b40b48c5-515b-4dc2-924d-d0301eb42003" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="8b39914b-8c41-4a2b-ab97-cdca7db659d8" >
+		<http:request-connection protocol="HTTPS" host="api.meteostat.net" />
+	</http:request-config>
+	<flow name="meteostat_assessmentFlow" doc:id="a3801828-9e3b-49f5-8a49-e98baa42910d" >
+		<http:listener doc:name="Listener" doc:id="28862d43-85ec-4d9b-a28c-66a9652d6049" config-ref="HTTP_Listener_config" path="/weather"/>
+		<choice doc:name="Choice" doc:id="a670f038-98c3-4e0a-9407-b85a4ecf63d0" >
+			<when expression='#[attributes.queryParams.info == "MAX"]'>
+				<http:request method="GET" doc:name="max temp" doc:id="fc515904-f50a-4343-b1cb-ce3ff93ab828" config-ref="HTTP_Request_configuration" path="//v1/history/daily">
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"start" : attributes.queryParams.start,
+	"key" : "lR0cZrnk",
+	"end" : attributes.queryParams.end,
+	"station" : "10637"
+}]]]></http:query-params>
+		</http:request>
+				<ee:transform doc:name="max temp" doc:id="a4961257-3390-47a5-a7d0-078496eadc84">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+fun getMonth(date : String) =
+   date[5 to 6]
+---
+max((payload.data filter ((item, index) -> getMonth(item.date) ~= "01")).temperature)]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<when expression='#[attributes.queryParams.info == "AVG"]'>
+				<http:request method="GET" doc:name="avg precip" doc:id="7fae5e44-1fc9-45ef-8e75-1a24e52b89c2" config-ref="HTTP_Request_configuration" path="/v1/history/daily">
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"start" : attributes.queryParams.start,
+	"key" : "lR0cZrnk",
+	"end" : attributes.queryParams.end,
+	"station" : "10637"
+}]]]></http:query-params>
+		</http:request>
+				<ee:transform doc:name="Copy_of_Average precip." doc:id="f978bef1-1f2c-4cdb-ae3e-9979fb2a9361" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+avg(payload.data.precipitation filter (value, index) -> (value != null))]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression='#[attributes.queryParams.info == "MIN"]'>
+				<http:request method="GET" doc:name="min_temp" doc:id="7bc9de4d-491a-4846-af75-c4b938c35472" config-ref="HTTP_Request_configuration" path="/v1/history/daily">
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"start" : attributes.queryParams.start,
+	"key" : "uFwmrhOW",
+	"end" : attributes.queryParams.end,
+	"station" : "10637"
+}]]]></http:query-params>
+		</http:request>
+				<ee:transform doc:name="min temp" doc:id="3c3b1088-ba37-47a8-9c75-f855633801d0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+min(payload.data.temperature)]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<set-payload value='"info" query parameter is not passed, please pass either MAX, MIN or AVG "case-sensitive"' doc:name="Set Payload" doc:id="ad2e2e62-ae41-401c-b236-71a5eb6c4baa" />
+				<logger level="INFO" doc:name="Logger" doc:id="f300e48a-3a38-442d-a8b6-364c41923d1c" message='"info" query parameter is not passed, please pass either MAX, MIN or AVG "case sensitive"' />
+			</otherwise>
+		</choice>
+	</flow>
+</mule>
